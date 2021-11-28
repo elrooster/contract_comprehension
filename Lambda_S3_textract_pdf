@@ -1,0 +1,108 @@
+import boto3
+import botocore
+import time
+import os
+import urllib.parse
+import json
+
+print('commencing shenanigans')
+
+s3 = boto3.client('s3')
+textract = boto3.client('textract', region_name = 'us-east-1')
+OutputBucket = 'doc-repository-002'
+
+####### Below (detect_document_text) is for jpg/png
+#def getTextractData(InputBucket, ObjectName):
+#    print('textracting')
+#    print(InputBucket)
+#    print(ObjectName)
+#    time.sleep(5)
+#    response = textract.detect_document_text(
+#        Document = {
+#            'S3Object': {
+#                'Bucket': InputBucket,
+#                'Name': ObjectName
+#            }
+#        })
+#    detectedText = ''
+#        #print detected text
+#    for item in response['Blocks']:
+#            if item['BlockType'] == 'LINE':
+#                detectedText += item['Text'] + '\n'
+#
+#    return detectedText
+
+
+def startJob(inputbucket, objectname):
+    response = None
+    response = textract.start_document_text_detection(
+    DocumentLocation={
+        'S3Object': {
+            'Bucket': inputbucket,
+            'Name': objectname
+        }
+    })
+
+    return response['JobId']
+
+def isJobComplete(jobid):
+    time.sleep(5)
+    response = textract.get_document_text_detection(JobId=jobid)
+    status = response["JobStatus"]
+    print("Job status: {}".format(status))
+
+    while(status == "IN_PROGRESS"):
+        time.sleep(5)
+        response = textract.get_document_text_detection(JobId=jobid)
+        status = response["JobStatus"]
+        print("Job status: {}".format(status))
+
+    return status
+
+def getJobResults(jobid):
+    pages = []
+    time.sleep(5)
+    response = textract.get_document_text_detection(JobId=jobid)
+    pages.append(response)
+    print("Resultset page recieved: {}".format(len(pages)))
+    nextToken = None
+    if('NextToken' in response):
+        nextToken = response['NextToken']
+    while(nextToken):
+        time.sleep(5)
+        response = textract.get_document_text_detection(JobId=jobid, NextToken=nextToken)
+        pages.append(response)
+        print("Resultset page recieved: {}".format(len(pages)))
+        nextToken = None
+        if('NextToken' in response):
+            nextToken = response['NextToken']
+    return pages
+
+def WriteToS3(textractdata, outputbucket, outputdocument):
+    FilePath = os.path.splitext(outputdocument)[0] + '.txt'
+    textractdata2 = json.dumps(textractdata, ensure_ascii = False, indent = 4)
+    s3.put_object(Body = textractdata2, Bucket = outputbucket, Key = FilePath)
+    print('regurgitated ' + generateFilePath)
+
+###################################################################
+def lambda_handler(event, context):
+    InputBucket = event['Records'][0]['s3']['bucket']['name']
+    ObjectName = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'], encoding = 'utf-8')
+
+    try:
+        print('go time')
+        time.sleep(5)
+        JobId = startJob(InputBucket, ObjectName)
+        print('starting job:'.format(JobId))
+        if(isJobComplete(JobId)):
+            response = getJobResults(JobId)
+        print(response)
+
+        WriteToS3(response, OutputBucket, ObjectName)
+
+        return 'FUBAR or G2G?'
+
+    except Exception as e:
+        print(e)
+        print('Error getting object {} from bucket {}')
+        raise e
