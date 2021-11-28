@@ -11,27 +11,7 @@ s3 = boto3.client('s3')
 textract = boto3.client('textract', region_name = 'us-east-1')
 OutputBucket = 'doc-repository-002'
 
-####### Below (detect_document_text) is for jpg/png
-#def getTextractData(InputBucket, ObjectName):
-#    print('textracting')
-#    print(InputBucket)
-#    print(ObjectName)
-#    time.sleep(5)
-#    response = textract.detect_document_text(
-#        Document = {
-#            'S3Object': {
-#                'Bucket': InputBucket,
-#                'Name': ObjectName
-#            }
-#        })
-#    detectedText = ''
-#        #print detected text
-#    for item in response['Blocks']:
-#            if item['BlockType'] == 'LINE':
-#                detectedText += item['Text'] + '\n'
-#
-#    return detectedText
-
+# Add SNS stuff
 
 def startJob(inputbucket, objectname):
     response = None
@@ -80,8 +60,7 @@ def getJobResults(jobid):
 
 def WriteToS3(textractdata, outputbucket, outputdocument):
     FilePath = os.path.splitext(outputdocument)[0] + '.txt'
-    textractdata2 = json.dumps(textractdata, ensure_ascii = False, indent = 4)
-    s3.put_object(Body = textractdata2, Bucket = outputbucket, Key = FilePath)
+    s3.put_object(Body = textractdata, Bucket = outputbucket, Key = FilePath)
     print('regurgitated ' + generateFilePath)
 
 ###################################################################
@@ -97,6 +76,7 @@ def lambda_handler(event, context):
         if(isJobComplete(JobId)):
             response = getJobResults(JobId)
         print(response)
+        ResponseJSON = json.dumps(response, ensure_ascii = False)
 
         WriteToS3(response, OutputBucket, ObjectName)
 
