@@ -1,0 +1,29 @@
+CloudFormation outputs from deployed stack
+---------------------------------------------------------------------------------------------------------------------
+Outputs
+---------------------------------------------------------------------------------------------------------------------
+Key                 DocumentsBucketName
+Description         Documents Bucket Name
+Value               contract-comprehension-documents-001
+
+Key                 queryESFunctionARN
+Description         This ARN needs permission in the Elasticsearch configuration.
+Value               arn:aws:lambda:us-east-1:926494140610:function:contractcomprehension-queryESFunction-
+xsJo0gjEHpXG
+
+Key                 StagingBucketName
+Description         Staging Bucket Name
+Value               contract-comprehension-staging-001
+
+Key                 AddToESFunctionRoleARN
+Description         This ARN needs permission in the Elasticsearch configuration.
+Value               arn:aws:iam::926494140610:role/contractcomprehension-AddToESFunctionRole-1VAJL81YCM7IM
+
+Key                 QueuedBucketName
+Description         Queued Bucket Name
+Value               contract-comprehension-queued-001
+
+Key                 AddToESFunctionARN
+Description         This AddToESFunction function ARN.
+Value               arn:aws:lambda:us-east-1:926494140610:function:contractcomprehension-AddToESFunction-
+XRIcCstw5WIP
