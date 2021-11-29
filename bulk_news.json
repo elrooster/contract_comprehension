@@ -1,6 +1,0 @@
-{ "index" : { "_index": "news", "_type" : "_doc", "_id" : "2" } }
-{"content": "Alice does not like the rainy day"}
-{ "index" : { "_index": "news", "_type" : "_doc", "_id" : "3" } }
-{"content": " I love living in New York City"}
-{ "index" : { "_index": "news", "_type" : "_doc", "_id" : "4" } }
-{"content": " Bob hates that movie"}    
