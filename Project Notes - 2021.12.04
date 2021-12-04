@@ -1,0 +1,22 @@
+Notes for the Contract Comprehension Project.
+
+It looks like we need to use Asynchronous jobs for larger files with Comprehend. The boto3 guide has the documentation, which suggests that the service can use an embedded textract call as well.
+
+Check out :
+https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/comprehend.html#Comprehend.Client.start_key_phrases_detection_job
+
+It also looks like the service requires the use of S3 for input files and for output files. The current function is set to automatically run when a new object is created in the doc-repository-001 bucket. I have a doc-repository-002 bucket which could work fine for the output files so that we don't get stuck into an read/write/read/write loop.
+
+The draft I have in lambda and in this repo is getting a IAM PassRole error. I tried to sort out policies, but was unsuccessful with the time I had available.
+
+So, I'm thinking that the architecture will look something like:
+- new document in s3
+- lambda function starts
+- document is sent to comprehend for textract and key phrase analysis
+- output document goes into output bucket
+- lambda function grabs the key phrase detection output and submits it to comprehend for an entity analysis. I'm assuming that it will be the same kind of function and that we'll need a third bucket for the output.
+- may need another lambda function to grab the file for upload to OpenSearch
+
+If you can take a swing at understanding how these functions work and walk me through it at our next meeting, that would be very awesome.
+
+Thanks!
