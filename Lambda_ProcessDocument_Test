@@ -1,0 +1,103 @@
+import boto3
+import botocore
+import time
+import os
+import os.path
+import sys
+import io
+import urllib.parse
+import json
+import requests
+import base64
+
+from io import BytesIO
+from requests_aws4auth import AWS4Auth
+from opensearchpy import OpenSearch, RequestsHttpConnection
+from s3transfer.manager import TransferManager
+from trp import Document
+
+print('commencing shenanigans')
+
+####################################################################
+### Global Settings ###
+
+region = 'us-east-1'
+s3 = boto3.client('s3')
+esClient = boto3.client('opensearch')
+textract = boto3.client(service_name = 'textract', region_name = region)
+comprehend = boto3.client(service_name = 'comprehend', region_name = region)
+OutputBucket = 'doc-repository-002'
+service = 'es'
+host = 'search-document-search-ssbjzd4kon2gajx7wrs5pc7nm4.us-east-1.es.amazonaws.com/'
+credentials = boto3.Session().get_credentials()
+
+####################################################################
+### Asynchronous Jobs ###
+
+def startJob(s3Uri):
+    response = None
+    response = comprehend.start_key_phrases_detection_job(
+        InputDataConfig={
+            'S3Uri': s3Uri,
+            'InputFormat': 'ONE_DOC_PER_FILE',
+            'DocumentReaderConfig':{
+                'DocumentReadAction': 'TEXTRACT_DETECT_DOCUMENT_TEXT',
+                'DocumentReadMode': 'SERVICE_DEFAULT'
+            }
+        },
+        OutputDataConfig={
+            's3Uri': 's3://doc-repository-001/'+ObjectName+'-kp.txt'
+        },
+        DataAccessRoleArn = 'arn:aws:iam::926494140610:role/service-role/s3_comprehend-role-ttb2uiie',
+        LanguageCode = 'en'
+    )
+
+    return response['JobId']
+
+def isJobComplete(jobid):
+    time.sleep(5)
+    response = DescribeKeyPhrasesDetectionJob(JobId=jobid)
+    status = response["JobStatus"]
+    print("Job status: {}".format(status))
+
+    while(status == "IN_PROGRESS"):
+        time.sleep(5)
+        response = DescribeKeyPhrasesDetectionJob(JobId=jobid)
+        status = response["JobStatus"]
+        print("Job status: {}".format(status))
+
+    return status
+
+
+####################################################################
+### Main Lambda Handler ###
+
+def lambda_handler(event, context):
+    print('received event: ' + json.dumps(event, indent=2))
+
+    # Get object from event, show content
+    InputBucket = event['Records'][0]['s3']['bucket']['name']
+    ObjectName = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'], encoding = 'utf-8')
+    s3Uri = 's3://'+InputBucket+'/'+ObjectName
+
+    print('Object: ' + ObjectName)
+    print('bucket: ' + InputBucket)
+    print(s3Uri)
+
+    text=''
+    textvalues=[]
+    textvalues_entity={}
+
+    try:
+        print('starting')
+        JobId = startJob(s3Uri)
+        print('Job '+JobId+'' Started')
+        if(isJobComplete(JobId)):
+            response = getJobResults(JobId)
+        print(response)
+
+
+    except Exception as e:
+        print(e)
+        print('Error getting object {} from bucket {}')
+        raise e
