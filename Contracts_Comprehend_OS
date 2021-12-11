@@ -1,0 +1,104 @@
+import boto3
+import botocore
+import time
+import os
+import os.path
+import sys
+import io
+import urllib.parse
+import json
+import requests
+import base64
+
+from io import BytesIO
+from requests_aws4auth import AWS4Auth
+from opensearchpy import OpenSearch, RequestsHttpConnection
+from s3transfer.manager import TransferManager
+from trp import Document
+from s3transfer.manager import TransferManager
+from trp import Document
+
+print('commencing more shenanigans')
+
+####################################################################
+### Global ###
+region = 'us-east-1'
+s3 = boto3.client('s3')
+comprehend = boto3.client(service_name = 'comprehend', region_name = region)
+esClient = boto3.client('opensearch')
+service = 'es'
+host = 'search-document-search-ssbjzd4kon2gajx7wrs5pc7nm4.us-east-1.es.amazonaws.com/'
+credentials = boto3.Session().get_credentials()
+comprehend_data_ARN = 'arn:aws:iam::926494140610:role/Comprehend_OS_Lambda_Role'
+InputBucket = 'doc-repository-002'
+OutputBucket = 'doc-repository-003'
+
+####################################################################
+### functions ###
+### start Comprehend Job ###
+def startJob(objectname):
+    response = None
+    response = comprehend.start_key_phrases_detection_job(
+        InputDataConfig={
+        'S3Uri': 's3://'+InputBucket+'/'+ObjectName,
+        'InputFormat': "ONE_DOC_PER_FILE",
+        },
+        OutputDataConfig={
+            'S3Uri': 's3://'+OutputBucket+'/'+ObjectName
+        },
+        DataAccessRoleArn = comprehend_data_ARN,
+        JobName = JOB_ID,
+        LanguageCode = 'en'
+        )
+        return response['JobName']
+
+
+### Comprehend: Check job ###
+def isJobComplete(jobid, service):
+    time.sleep(5)
+    response = comprehend.describe_key_phrases_detection_job(JobId=jobid)
+    status = response["JobStatus"]
+    print("Job status: {}".format(status))
+
+    while(status == "IN_PROGRESS"):
+        time.sleep(5)
+        response = comprehend.describe_key_phrases_detection_job(JobId=jobid)
+        status = response["JobStatus"]
+        print("Job status: {}".format(status))
+
+    return status
+
+### Comprehend: Get job
+def getJobResults(jobid):
+    response = comprehend.describe_key_phrases_detection_job(JobId=jobid)
+    return response
+
+#################################################################
+def lambda_handler(event, context):
+    print('received event: ' + json.dumps(event, indent=2))
+
+    # Get object from event, show content
+    InputBucket = event['Records'][0]['s3']['bucket']['name']
+    ObjectName = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'], encoding = 'utf-8')
+    s3Uri = 's3://'+InputBucket+'/'+ObjectName
+    print('Object Name: ' + ObjectName)
+    print('Input Bucket: ' + InputBucket)
+    print('s3URI: '+ s3Uri)
+
+    textvalues=[]
+    textvalues_entity={}
+
+    try:
+        print(s3Uri)
+
+        #Get Key Phrases
+        JobId = startJob(ObjectName)
+        print('Key Phrase Job Started')
+        if(isJobComplete(JobId)):
+            KeyPhrases = getJobResults(JobId)
+        print(KeyPhrases)
+
+    except Exception as e:
+        print(e)
+        print('Error getting object {} from bucket {}')
+        raise e
