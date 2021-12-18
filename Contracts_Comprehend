@@ -1,0 +1,119 @@
+import boto3
+import botocore
+import time
+import os
+import os.path
+import sys
+import io
+import urllib.parse
+import json
+#import requests
+import base64
+import uuid
+import gzip
+import tarfile
+
+from io import BytesIO
+from s3transfer.manager import TransferManager
+from requests_aws4auth import AWS4Auth
+from opensearchpy import OpenSearch, RequestsHttpConnection
+
+print('commencing more shenanigans')
+
+####################################################################
+### Global ###
+region = 'us-east-1'
+s3 = boto3.client('s3')
+comprehend = boto3.client(service_name = 'comprehend', region_name = region)
+InputBucket = 'doc-repository-001'
+StagingBucket = 'doc-repository-002'
+OutputBucket = 'doc-repository-003'
+JOB_ID = str(uuid.uuid1())
+osClient = boto3.client('opensearch')
+service = 'es'
+host = 'search-document-search-ssbjzd4kon2gajx7wrs5pc7nm4.us-east-1.es.amazonaws.com'
+credentials = boto3.Session().get_credentials()
+comprehend_data_ARN = 'arn:aws:iam::926494140610:role/Comprehend_DataRole'
+
+####################################################################
+### functions ###
+
+    ## Comprehend: Start Entities Job
+def Ent_startjob(s3uri):
+    response = None
+    response = comprehend.start_entities_detection_job(
+        InputDataConfig={
+        'S3Uri': s3uri,
+        'InputFormat': "ONE_DOC_PER_FILE",
+        },
+        OutputDataConfig={
+            'S3Uri': 's3://'+OutputBucket
+        },
+        DataAccessRoleArn = comprehend_data_ARN,
+        JobName = JOB_ID,
+        LanguageCode = 'en'
+        )
+    return response
+
+    ### Comprehend: Get Entities job
+def Ent_getjob(jobid):
+    response = comprehend.describe_entities_detection_job(JobId=jobid)
+    return response
+
+### Connect to the opensearch domain
+def connectOS():
+    print('connecting to the OS Endpoint {0}')
+    awsauth = AWS4Auth(credentials.access_key,
+    credentials.secret_key,
+    region, service,
+    session_token = credentials.token)
+    print(awsauth)
+
+    try:
+        es = OpenSearch(
+            hosts = [{'host': host, 'port': 443}],
+            http_auth = awsauth,
+            use_ssl = True,
+            verify_certs = True,
+            connection_class = RequestsHttpConnection)
+        print('connected to OS')
+        return es
+
+    except Exception as E:
+        print('unable to connect to {0}')
+        print(E)
+        exit(3)
+
+
+
+#################################################################
+def lambda_handler(event, context):
+    print('received event: ' + json.dumps(event, indent=2))
+
+    # Get object from event, show content
+    StagingBucket = event['Records'][0]['s3']['bucket']['name']
+    ObjectName = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'], encoding = 'utf-8')
+
+    s3Uri_txt = 's3://'+StagingBucket+'/'+ObjectName
+    print('Object Name: ' + ObjectName)
+    print('Input Bucket: ' + StagingBucket)
+    print('s3URI_txt: ' + s3Uri_txt)
+    original_ObjectName = ObjectName[4:-4]
+    print('s3URI_pdf: '+ 's3://'+ InputBucket + '/' + original_ObjectName)
+
+    #start async job
+    print('Starting Entity Detection Job')
+    result = Ent_startjob(s3Uri_txt)
+    job_id = result["JobId"]
+
+    #Check on job
+    status = Ent_getjob(job_id)
+    print(status)
+    job_status = status["EntitiesDetectionJobProperties"]["JobStatus"]
+
+
+
+    # except Exception as e:
+    #     print(e)
+    #     print('Error getting object {} from bucket {}')
+    #     raise e

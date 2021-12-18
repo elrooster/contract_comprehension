@@ -7,15 +7,17 @@ import sys
 import io
 import urllib.parse
 import json
-import requests
+#import requests
 import base64
+import uuid
+import gzip
+import tarfile
 
 from io import BytesIO
 from requests_aws4auth import AWS4Auth
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from s3transfer.manager import TransferManager
 from trp import Document
-from s3transfer.manager import TransferManager
 from trp import Document
 
 print('commencing more shenanigans')
@@ -25,52 +27,37 @@ print('commencing more shenanigans')
 region = 'us-east-1'
 s3 = boto3.client('s3')
 comprehend = boto3.client(service_name = 'comprehend', region_name = region)
-esClient = boto3.client('opensearch')
-service = 'es'
-host = 'search-document-search-ssbjzd4kon2gajx7wrs5pc7nm4.us-east-1.es.amazonaws.com/'
-credentials = boto3.Session().get_credentials()
-comprehend_data_ARN = 'arn:aws:iam::926494140610:role/Comprehend_OS_Lambda_Role'
+OriginBucket = 'doc-re'
 InputBucket = 'doc-repository-002'
 OutputBucket = 'doc-repository-003'
+JOB_ID = str(uuid.uuid1())
+osClient = boto3.client('opensearch')
+service = 'es'
+host = 'search-document-search-ssbjzd4kon2gajx7wrs5pc7nm4.us-east-1.es.amazonaws.com'
+credentials = boto3.Session().get_credentials()
 
 ####################################################################
 ### functions ###
-### start Comprehend Job ###
-def startJob(objectname):
+### Comprehend: Start Entities Job
+def Ent_startjob(objectname):
     response = None
-    response = comprehend.start_key_phrases_detection_job(
+    response = comprehend.start_entities_detection_job(
         InputDataConfig={
-        'S3Uri': 's3://'+InputBucket+'/'+ObjectName,
+        'S3Uri': s3Uri,
         'InputFormat': "ONE_DOC_PER_FILE",
         },
         OutputDataConfig={
-            'S3Uri': 's3://'+OutputBucket+'/'+ObjectName
+            'S3Uri': 's3://'+OutputBucket
         },
         DataAccessRoleArn = comprehend_data_ARN,
         JobName = JOB_ID,
         LanguageCode = 'en'
         )
-        return response['JobName']
+    return response
 
-
-### Comprehend: Check job ###
-def isJobComplete(jobid, service):
-    time.sleep(5)
-    response = comprehend.describe_key_phrases_detection_job(JobId=jobid)
-    status = response["JobStatus"]
-    print("Job status: {}".format(status))
-
-    while(status == "IN_PROGRESS"):
-        time.sleep(5)
-        response = comprehend.describe_key_phrases_detection_job(JobId=jobid)
-        status = response["JobStatus"]
-        print("Job status: {}".format(status))
-
-    return status
-
-### Comprehend: Get job
-def getJobResults(jobid):
-    response = comprehend.describe_key_phrases_detection_job(JobId=jobid)
+    ### Comprehend: Get Entities job
+def Ent_getjob(jobid):
+    response = comprehend.describe_entities_detection_job(JobId=jobid)
     return response
 
 #################################################################
@@ -80,23 +67,29 @@ def lambda_handler(event, context):
     # Get object from event, show content
     InputBucket = event['Records'][0]['s3']['bucket']['name']
     ObjectName = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'], encoding = 'utf-8')
+
     s3Uri = 's3://'+InputBucket+'/'+ObjectName
     print('Object Name: ' + ObjectName)
     print('Input Bucket: ' + InputBucket)
     print('s3URI: '+ s3Uri)
 
-    textvalues=[]
-    textvalues_entity={}
+    #start async job
+    print('Starting Entity Detection Job')
+    result = Ent_startjob()
+    job_id = result["JobId"]
 
-    try:
-        print(s3Uri)
+    #Ceck on job
+    while True:
+        status = entities_job_describer(job_id)
+        print(status)
+        job_status = status["EntitiesDetectionJobProperties"]["JobStatus"]
 
-        #Get Key Phrases
-        JobId = startJob(ObjectName)
-        print('Key Phrase Job Started')
-        if(isJobComplete(JobId)):
-            KeyPhrases = getJobResults(JobId)
-        print(KeyPhrases)
+        if job_status in ['COMPLETED', 'FAILED']:
+            print(f"Job status: {job_status}")
+            break
+        else:
+            print(f"Job status: {job_status}")
+            time.sleep(10)
 
     except Exception as e:
         print(e)

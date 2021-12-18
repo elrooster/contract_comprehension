@@ -15,46 +15,25 @@ from requests_aws4auth import AWS4Auth
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from s3transfer.manager import TransferManager
 from trp import Document
-from s3transfer.manager import TransferManager
-from trp import Document
+
 
 print('commencing shenanigans')
 
+####################################################################
 ### Global ###
 region = 'us-east-1'
 s3 = boto3.client('s3')
 textract = boto3.client(service_name = 'textract', region_name = region)
 InputBucket = 'doc-repository-001'
-OutputBucket = 'doc-repository-002'
+StagingBucket = 'doc-repository-002'
+OutputBucket = 'doc-repository-003'
 osClient = boto3.client('opensearch')
 service = 'es'
-host = 'search-document-search-ssbjzd4kon2gajx7wrs5pc7nm4.us-east-1.es.amazonaws.com/'
+host = 'search-document-search-ssbjzd4kon2gajx7wrs5pc7nm4.us-east-1.es.amazonaws.com'
 credentials = boto3.Session().get_credentials()
 
-### Connect to the opensearch domain
-def connectOS():
-    print('connecting to the OS Endpoint {0}')
-    awsauth = AWS4Auth(credentials.access_key,
-    credentials.secret_key,
-    region, service,
-    session_token = credentials.token)
-    print(awsauth)
-
-    try:
-        es = OpenSearch(
-            hosts = [{'host': host, 'port': 443}],
-            http_auth = awsauth,
-            use_ssl = True,
-            verify_certs = True,
-            connection_class = RequestsHttpConnection)
-        return es
-
-    except Exception as E:
-        print('unable to connect to {0}')
-        print(E)
-        exit(3)
-
-
+####################################################################
+### functions ###
 
 ### Textract: Start Async Job
 def startJob(inputbucket, objectname):
@@ -125,13 +104,13 @@ def lambda_handler(event, context):
         if(isJobComplete(JobId)):
             response = getJobResults(JobId)
 
-        #save json response from textract into s3
-        #raw_textract = s3.put_object(
-        #    Bucket = OutputBucket,
-        #    Key = '/json/' + ObjectName + '-RAW.json',
-        #    Body = json.dumps(response)
-        #)
-        #print(f'Textracted: {OutputBucket}/{ObjectName}.json')
+        save json response from textract into s3
+        raw_textract = s3.put_object(
+            Bucket = StagingBucket,
+            Key = '/json/' + ObjectName + '-RAW.json',
+            Body = json.dumps(response)
+        )
+        print(f'Textracted: {StagingBucket}/{ObjectName}.json')
 
         #recreate text from textract Output
         text=''
@@ -140,24 +119,13 @@ def lambda_handler(event, context):
                 if block["BlockType"] == "LINE":
                     text += block['Text'] + " "
 
-        #save text file into bucket
-        #txt_textract = s3.put_object(
-        #    Bucket = OutputBucket,
-        #    Key = '/txt/' + ObjectName + '-TEXT.txt',
-        #    Body = json.dumps(text)
-        #)
-        #print(f'Text file created: {OutputBucket}/{ObjectName}.txt')
-
-        s3url = 'https://s3.console.aws.amazon.com/s3/object/'+InputBucket+'/'+ObjectName+'?region='+ region
-
-        ### Write to OpenSearch
-        searchdata = {'s3link': s3url, 'text': text}
-        print(searchdata)
-        print('connecting to opensearch')
-        es = connectOS()
-        es.index(index = 'document', doc_type = '_doc', body = searchdata)
-        print('data uploaded to opensearch')
-        return 'victory?'
+        save text file into bucket
+        txt_textract = s3.put_object(
+            Bucket = StagingBucket,
+            Key = '/txt/' + ObjectName + '-TEXT.txt',
+            Body = json.dumps(text)
+        )
+        print(f'Text file created: {StagingBucket}/{ObjectName}.txt')
 
     except Exception as e:
         print(e)

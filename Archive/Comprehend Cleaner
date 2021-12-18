@@ -1,0 +1,47 @@
+import gzip
+import boto3
+import botocore
+import json
+import io
+import ast
+
+
+def flattener(unflat):
+
+
+
+
+def lambda_handler(event, context):
+
+    s3 = boto3.client('s3')
+
+    bucket = 'doc-repository-003'
+    key = '926494140610-NER-363a877344f26aa43a838ccb1909b098/output/output.tar.gz'
+    #s3://doc-repository-003/926494140610-KP-5b468ea65ac4802870673652b0b3b31d/output/
+    #s3://doc-repository-003/926494140610-NER-363a877344f26aa43a838ccb1909b098/output/output.tar.gz
+
+
+    #for #record in event['Records']:
+        #bucket = record['s3'][['bucekt']]['name']
+        #key = unquote_plus(record['s3']['object']['key'])
+
+    obj = s3.get_object(Bucket = bucket, Key = key)
+    with gzip.GzipFile(fileobj=obj.get('Body')) as gzipfile:
+        content = gzipfile.read()
+    print(type(content))
+    entities = content.decode('utf-8')
+    #entities = entities.strip().replace(' ', '')
+    entities = ''.join(entities.split())
+    #print(entities)
+    start = entities.find('{')
+    end = entities.rfind('}')+1
+    print(type(entities))
+    print(len(entities))
+    print(entities)
+    entities = entities[start:end]
+    print(len(entities))
+    print(entities)
+
+    entities_json = json.loads(entities)
+    print(entities_json)
+    print('entities_json type: ',type(entities_json))
